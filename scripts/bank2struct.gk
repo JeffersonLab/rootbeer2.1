@@ -1,0 +1,326 @@
+# Script to make header files from clasbanks.dll
+# currently should be run like this:
+
+# gawk -v incdir=<incdir> -v srcdir=<srcdir> -f bank2struct.gk <incdir>/clasbanks.ddl > <incdir>/bankheader.h
+
+# Create global variables and table of struct with their addresses  to hold all the important bank info.
+   
+BEGIN{
+
+# set up the various output files
+# stdout should be piped into incdir/bankheader.h
+
+# bankvars.h is the included file needed by all rootbeer code
+# bankvars.cxx  gets all the variables compiled into root as globals
+# bankvarsLinkDef makes them available interactively for macros etc.
+
+  bankvarscxx=sprintf("%s/bankvars.cxx",srcdir);
+  bankvarsh=sprintf("%s/bankvars.h",incdir);
+  bankvarsLinkDef=sprintf("%s/bankvarsLinkDef.h",incdir);
+  
+  #write the top of bankheader.h
+  printf"#ifndef ROOTBEER_BANKHEADER\n";
+  printf"#define ROOTBEER_BANKHEADER\n\n";
+  printf"// WARNING - This file is generated from clasbanks.ddl by the command\n";
+  printf"//           Using the script bank2struct.gk\n";
+  printf"//	      Edit at your peril!!\n\n";
+
+  #write the top of bankvars.h
+  printf"#ifndef ROOTBEER_BANKVARS\n" > bankvarsh;
+  printf"#define ROOTBEER_BANKVARS\n\n" > bankvarsh;
+  printf"// WARNING - This file is generated from clasbanks.ddl by the command\n" > bankvarsh;
+  printf"//           Using the script bank2struct.gk\n" > bankvarsh;
+  printf"//	      Edit at your peril!!\n\n" > bankvarsh;
+  print"#include \"bankheader.h\""> bankvarsh;
+  print"#ifndef READBOS"> bankvarsh;
+  print"#include \"TBos.h\""> bankvarsh;
+  print"#include \"TDST.h\""> bankvarsh;
+  print"#endif"> bankvarsh;
+  print"#include <time.h>"> bankvarsh;
+
+  #write the top of bankvars.cxx
+  printf"// WARNING - This file is generated from clasbanks.ddl by the command\n" > bankvarscxx;
+  printf"//           Using the script bank2struct.gk\n" > bankvarscxx;
+  printf"//	      Edit at your peril!!\n\n" > bankvarscxx; 
+  print"#include \"bankvars.h\""> bankvarscxx;
+
+  p=0;						#init counter for no of banks
+}
+
+# create a struct for each BANK, keeping the member names and comments.
+# also create write the initialisation info to bankinit.h at the same time.
+{
+if($1~"TABLE"){					#start to parse a bank (ie in clasbanks.ddl)
+  intsize = "int";				#set default int type 
+  if($3~"B16") intsize="unsigned short";	#change int type on basis of field 3
+  if($3~"B32") intsize="unsigned int";
+  name=$2;					#bank name from field 2
+  split($0, a,"!" );				#split TABLE line at "!"
+  comment=a[3];					#pick out the comment
+  printf"typedef struct %s_t {\t\t",name;	#create new struct typedef for bank
+  printf"// %s \n", comment;			#tag on the comment
+    
+  allnames[p]=name;				#add bank name to list of all bank names
+  while($1!~"1"){				#get lines 'til reach 1st member
+    getline;
+  }
+
+  num=0;					#init member counter
+  tot_data_length=0;				#init counter for length of bank in bytes
+  while($0!~"END TABLE"){			#keep going 'til we get to an END TABLE line
+    if(NF>0){					#if no of fields in line > 0
+      if($1 !~ "!"){				#if not a comment line
+	array="";				#int array to "" for most non-char type data members		
+	mem_name[p,num]=$2;			#save the member name in bank,member table
+	data_size=4;				#default value for size of data member
+	if($3=="A") {				#if a char member - that's 4 bytes of chars
+	  acount=4;				#loop over all subsequent chars to make a big string
+	  while(1) {				
+	    getline;				#get the next line
+	    if($3!="A") {			#until no more chars
+	      break;
+	    }
+	    acount+=4;				#add 4 to the total char count
+	  }
+	  type="char";				#set the type as char
+	  array=sprintf("[%d]",acount);			#make  format string to print this string
+	  form_string[p,num] = sprintf("%%.%ds",acount);
+	  data_size=acount;	
+	}
+	if($3=="F") type="float";		#set the type for the member
+	if($3=="I") type=intsize;		#for int, depends on intsize from TABLE line
+	
+	if(type=="unsigned short") {		#set a typecode based on types
+	  data_size=2;
+	  typecode="T";
+	}
+	if(type=="short") typecode="S";		
+	if(type=="float") typecode="F";
+	if(type=="int") typecode="I";
+	if(type=="unsigned int") typecode="J";
+	if(type=="char") typecode="A";
+	
+	
+	if((typecode == "S")||(typecode == "T")){	#construct a print format string for member
+	  form_string[p,num] = "%hd";
+	  form_len[p,num]=8;
+	}
+	if((typecode == "I")||(typecode == "J")){
+	  form_string[p,num] = "%d";
+	  form_len[p,num]=7;
+	}
+	if(typecode == "F"){
+	  form_string[p,num] = "%8.3f";
+	  form_len[p,num]=7;
+	}
+	
+	split($0, a,"!" );				#split the line at the "!" to get the comment
+	comment="";
+	if(length(a[2])>1){
+	  comment=sprintf("// %s",a[2]);
+	}
+	memb=sprintf("%s%s; ",mem_name[p,num],array); 	#make member name, including array bit for chars
+	printf"\t%s\t%-16s%s\n",type,memb,comment;	#print the line in the struct for the member
+	
+#	printf"\t%d, %d, '%s',\n",tot_name_offset,tot_data_length,typecode >bankinit;
+###	tot_name_offset+=length(mem_name[p,num])+form_len[p,num]-1;
+	tot_data_length+=data_size;			#add the size of the data member to total for bank
+	num++;						#inc counter for members in this bank
+      }
+    }
+    getline;						#get the next ling from clasbanks.ddl
+  }
+  # got to END TABLE - finished getting member info for this bank
+  allsizes[p]=num;					#save the no of members in that bank
+  alllengths[p++]=tot_data_length;			#save the length in bytes of all the data
+  printf"} %s_t;\n",name;				#finish off the typedef of the bank struct
+  
+}
+
+
+}
+END{
+# fill assoc array with single sector bank types (ie max of 1 instance of BANK per event)
+  while((getline < "./dat/singles.dat")>0){
+    if($0 !~"//"){
+      bank[$1]=$2;
+      singlecount++;
+    }
+  }
+  #now loop over all banks
+  for(n=0;n<p;n++){
+    printf"#define\t%s_ID\t%3d\n",allnames[n],n;	#create defs of all bank indices
+
+    #now define the global variables associated with each BANK
+    #they get defined in bankvars.cxx,
+    #and defined as externals in bankvars.h 
+    # Variable for single and multi sector banks are:
+    #			 
+    # 1) Single instance bank (eg EVNT):			
+    #	struct EVNT_t *EVNT		//1d array of structures	
+    #	int            EVNT_NH; 	//no of hits in the bank
+    #	int            EVNT_S; 		//sector no of bank not ususlly relevant for singles
+    #
+    #
+    # 2) Multiple instance bank (eg DC0):				
+    #	struct SCR_t    **SCR;		//2d array of structs
+    #	int              *SCR_NH;	//array of hits for each sector 
+    #	int              *SCR_S;	//aray of sector numbers
+    #	int               SCR_NS;	//number of sectors 
+    #
+    # We also define a print function for the BANK
+
+    if(allnames[n] in bank){		#ie if it is a single sector bank
+      printf "\n// bank %s - single sector bank\n",allnames[n] > bankvarsh;
+      printf "extern struct %s_t\t *%s;\n",allnames[n],allnames[n] > bankvarsh;
+      printf "extern int \t\t  %s_NH;\n",allnames[n] > bankvarsh;
+      printf "extern int \t\t  %s_S;\n",allnames[n] > bankvarsh;
+      printf "\n// bank %s - single sector bank\n",allnames[n] > bankvarscxx;
+      printf "struct %s_t\t *%s;\n",allnames[n],allnames[n] > bankvarscxx;
+      printf "int \t\t  %s_NH;\n",allnames[n] > bankvarscxx;
+      printf "int \t\t  %s_S;\n",allnames[n] > bankvarscxx;
+      printf "void %s_Print(){\n",allnames[n]  > bankvarscxx;
+      printf "extern void %s_Print();\n",allnames[n]  > bankvarsh;
+      printf "  int n;\n"  > bankvarscxx;
+      printf "  if(%s_NH){\n",allnames[n]  > bankvarscxx;
+      printf "    fprintf(stdout,\"Group:\\t%s\\tSector:\\t%%d \\tNhits:\\t%%d\\n\",%s_S,%s_NH);\n",allnames[n],allnames[n],allnames[n]  > bankvarscxx;
+      printf "    for(n=0;n<%s_NH;n++){\n",allnames[n]  > bankvarscxx;	
+      printf "      fprintf(stdout,\""  > bankvarscxx;
+      for(m=0;m<allsizes[n];m++){
+	if(allnames[n]~"HEAD"){
+	  if((mem_name[n,m]~"TIME")||(mem_name[n,m]~"TRIGBITS")){ #special format for HEAD.TIME, TRIGBITS
+	    if(mem_name[n,m]~"TIME"){
+	      printf "%s: %%24.24s\\t",mem_name[n,m]  > bankvarscxx; 	#TIME as a string from ctime()
+	    }
+	    else{
+	      printf "%s: 0x%%4.4X\\t",mem_name[n,m]  > bankvarscxx;	#TRIGBITS in hex
+	    }
+	  }
+	  else{
+	  printf "%s: %s\\t",mem_name[n,m],form_string[n,m]  > bankvarscxx;
+	  }
+	}
+	else{
+	  printf "%s: %s\\t",mem_name[n,m],form_string[n,m]  > bankvarscxx;
+	}
+      }
+      printf "\""  > bankvarscxx;
+      for(m=0;m<allsizes[n];m++){
+	if((allnames[n]~"HEAD")&&(mem_name[n,m]~"TIME")){ #special for HEAD.TIME to call ctime()
+	  printf ",\n\t\tctime((const long*)&(%s[n].%s))",allnames[n],mem_name[n,m]  > bankvarscxx;
+	}
+	else{
+	printf ",\n\t\t%s[n].%s",allnames[n],mem_name[n,m]  > bankvarscxx;
+	}
+      }
+      printf ");\n"  > bankvarscxx;
+      printf "      fprintf(stdout,\"\\n\");\n"  > bankvarscxx;
+      printf "    }\n"  > bankvarscxx;
+      printf "    fprintf(stdout,\"\\n\");\n"  > bankvarscxx;
+      printf "  }\n"  > bankvarscxx;
+      printf "}\n"  > bankvarscxx;
+
+    }
+    else{
+      printf "\n// bank %s - multi sector bank\n",allnames[n] > bankvarsh;
+      printf "extern struct %s_t\t**%s;\n",allnames[n],allnames[n] > bankvarsh;
+      printf "extern int \t\t *%s_NH;\n",allnames[n] > bankvarsh;
+      printf "extern int \t\t *%s_S;\n",allnames[n] > bankvarsh;
+      printf "extern int \t\t  %s_NS;\n",allnames[n] > bankvarsh;
+      printf "\n// bank %s - multi sector bank\n",allnames[n] > bankvarscxx;
+      printf "struct %s_t\t**%s;\n",allnames[n],allnames[n] > bankvarscxx;
+      printf "int \t\t *%s_NH;\n",allnames[n] > bankvarscxx;
+      printf "int \t\t *%s_S;\n",allnames[n] > bankvarscxx;
+      printf "int \t\t  %s_NS;\n",allnames[n] > bankvarscxx;
+
+      printf "void %s_Print(){\n",allnames[n]  > bankvarscxx;
+      printf "extern void %s_Print();\n",allnames[n]  > bankvarsh;
+      printf "  int s,n;\n"  > bankvarscxx;
+      printf "  if(%s_NS){\n",allnames[n]  > bankvarscxx;
+      printf "    for(s=0;s<%s_NS;s++){\n",allnames[n]  > bankvarscxx;	
+      printf "      if(%s_NH[s]){\n",allnames[n]  > bankvarscxx;
+      printf "        fprintf(stdout,\"Group:\\t%s\\tSector:\\t%%d \\tNhits:\\t%%d\\n\",%s_S[s],%s_NH[s]);\n",allnames[n],allnames[n],allnames[n]  > bankvarscxx;
+      printf "        for(n=0;n<%s_NH[s];n++){\n",allnames[n]  > bankvarscxx;	
+      printf "          fprintf(stdout,\""  > bankvarscxx;
+      for(m=0;m<allsizes[n];m++){
+	printf "%s: %s\\t",mem_name[n,m],form_string[n,m]  > bankvarscxx;
+      }
+      printf "\""  > bankvarscxx;
+      for(m=0;m<allsizes[n];m++){
+	printf ",\n\t\t%s[s][n].%s",allnames[n],mem_name[n,m]  > bankvarscxx;
+      }
+      printf ");\n"  > bankvarscxx;
+      printf "          fprintf(stdout,\"\\n\");\n"  > bankvarscxx;
+      printf "        }\n"  > bankvarscxx;
+      printf "        fprintf(stdout,\"\\n\");\n"  > bankvarscxx;
+      printf "      }\n"  > bankvarscxx;
+      printf "    }\n"  > bankvarscxx;
+      printf "  }\n"  > bankvarscxx;
+      printf "}\n"  > bankvarscxx;
+    }  
+  }
+  
+  
+  printf"\n#define\tNO_OF_BANKS\t%3d\n\n",p;	#make a def for the total no of banks
+  
+  printf"#endif\n";				#and finish off bankheader.h
+
+#now finish off the variable names in bankvars.h and bankvars.cxx	
+
+  printf"\nextern int \t\t  nBankTypes;\t// Total of different banks \n",p > bankvarsh; 
+  printf"\nint \t\t  nBankTypes = %d;\t// Total of different banks \n",p > bankvarscxx; 
+  
+#now make a big array of structs full of pointers to the global variables and print functions
+  printf"\n// Make a table with the bank names, and addresses of the structs and variables\n" > bankvarscxx; 
+  printf"// associated with them\n" > bankvarscxx;
+  printf"struct addressBanks_t bankAdd[%d] = {\n",p > bankvarscxx;	
+
+  for(n=0;n<p;n++){
+    if(allnames[n] in bank){
+      printf "\t{\"%-4s\", (void**)&%s, NULL, (int**)&%s_NH, (int**)&%s_S, %d, %s_Print},\n",allnames[n],allnames[n],allnames[n],allnames[n],alllengths[n],allnames[n] > bankvarscxx;
+    }
+    else{
+      printf "\t{\"%-4s\", (void**)&%s, &%s_NS, &%s_NH, &%s_S, %d, %s_Print},\n",allnames[n],allnames[n],allnames[n],allnames[n],allnames[n],alllengths[n],allnames[n] > bankvarscxx;
+    }
+  }
+  printf"};\n" > bankvarscxx;
+
+  #make a global variable to point to the bigh table of structs
+  printf"struct addressBanks_t *bankAddress=bankAdd;\n" > bankvarscxx;	
+  printf"extern struct addressBanks_t *bankAddress;\n" > bankvarsh;	
+  print"#endif"> bankvarsh;
+
+
+
+
+#now make the LinkDef file so that CINT knows about the BANK structs
+ printf"#ifdef __CINT__\n\n" > bankvarsLinkDef;
+ printf"#pragma link off all globals;\n" > bankvarsLinkDef;
+ printf"#pragma link off all classes;\n" > bankvarsLinkDef;
+ printf"#pragma link off all functions;\n" > bankvarsLinkDef;
+ printf"#pragma link C++ struct addressBanks_t;\n" > bankvarsLinkDef;
+
+ for(n=0;n<p;n++){
+   printf"#pragma link C++ struct %s_t;\n",allnames[n] > bankvarsLinkDef;
+ }
+
+  for(n=0;n<p;n++){
+    if(allnames[n] in bank){
+      printf "#pragma link C++ global %s;\n",allnames[n] > bankvarsLinkDef;
+      printf "#pragma link C++ global %s_NH;\n",allnames[n] > bankvarsLinkDef;
+      printf "#pragma link C++ global %s_S;\n",allnames[n] > bankvarsLinkDef;
+    }
+    else{
+      printf "#pragma link C++ global %s;\n",allnames[n] > bankvarsLinkDef;
+      printf "#pragma link C++ global %s_NH;\n",allnames[n] > bankvarsLinkDef;
+      printf "#pragma link C++ global %s_S;\n",allnames[n] > bankvarsLinkDef;
+      printf "#pragma link C++ global %s_NS;\n",allnames[n] > bankvarsLinkDef;
+    }
+  }
+
+  printf "#pragma link C++ global bankAddress;\n"  > bankvarsLinkDef;
+  printf "#pragma link C++ global nBankTypes;\n"  > bankvarsLinkDef;
+ printf"\n#endif\n" > bankvarsLinkDef;
+
+
+}

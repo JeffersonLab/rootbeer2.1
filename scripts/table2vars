@@ -1,0 +1,144 @@
+#!/bin/sh
+
+if [ $# -lt 1 ]; then
+    echo
+    echo "Description: A utility to generate a header file from a runtable (for TExpTable)"
+    echo
+    echo "Usage: table2header <tablefile> [<tablename>]"
+    exit
+fi
+
+
+#full name of the table
+fulltable=$1;
+#with dir stripped off
+table=`basename $fulltable`
+
+#tablename will have directory and any suffix stripped off, and "Vars" added
+tablename=`basename $fulltable | gawk 'BEGIN{FS="."}{printf"%s",$1}'`
+
+if [ $# -gt 1 ]; then
+    tablename=$2
+fi
+
+
+header="${tablename}.h"
+
+hdef="__${tablename}_h__"
+today=`date`
+
+#write out the 1st part
+
+echo "#ifndef $hdef"  > $header
+echo "#define $hdef"  >> $header
+echo                  >> $header
+echo "#include \"TExpTable.h\"" >> $header
+echo                  >> $header
+echo "// This header was created from the table $fulltable on $today by running the command:" >> $header
+echo "// $0 $@" >> $header
+echo >> $header
+echo "// To use it, simple include the header" >> $header
+echo "// A globally available ExpTable class - ${tablename}Table is created" >> $header
+echo "// together with global variables relating to each column (${tablename}_var) - defined below" >> $header
+echo "//" >> $header
+echo "// Calling the member function GetAllForValue(int value, char *variable1, char *variable2=NULL)" >> $header
+echo "// searches for a row in the table and updates all the global variables to values in that row" >> $header
+echo "// Usually it would be a Run number or a run range" >> $header
+echo "// Eg. ${tablename}Table->GetAllForValue(53772,\"Run\"); would find the row where Run=53772" >> $header
+echo "// and update all the variables to the values from that row." >> $header
+echo "// Eg. ${tablename}Table->GetAllForValue(53772,\"RunMin\",\"RunMax\"); would find the row where RunMin <= 53772 <= RunMax" >> $header  
+echo "// and update all the variables to the values from that row." >> $header
+echo  >> $header
+echo  >> $header
+
+#use awk to collect the variable names and format specifiers from the top rows of the table
+#and write the header file
+
+gawk -v tName=$tablename -v fName=$fulltable '
+{
+  if($1=="Variables:"){    #save all var names in vars[]
+    nVar=NF;               #record the no of variables
+    for(n=2;n<=NF;n++){
+      vars[n]=$n;
+    }
+  }
+  if($1=="Types:"){         #save all format specifiers in form[]
+    for(n=2;n<=NF;n++){
+      form[n]=$n;
+    }
+  }
+}
+END{                        #print out variables and struct into a header file
+
+  printf"// Create a TExpTable with this file as the actual data table\n"
+  printf"TExpTable *%sTable = new TExpTable(\"%s\",\"%s\");\n\n",tName,fName,tName;
+  printf"// Define variables for all the columns in the run table and set their addresses in %sTable \n\n",tName;
+  printf"// An obscure way to define and set global table and variables that works in both\n";
+  print "// interpreted and compiled mode - void *axx are dummies\n\n";
+  for(n=2;n<=nVar;n++){
+    if(form[n]~"%d"){
+       tvar=sprintf("Int_t   %s_%s;",tName,vars[n]);
+       variable=sprintf("%-40s%s%-2d = %sTable->SetVarAddress(\"%s\",&%s_%s);",tvar,"void *a",n,tName,vars[n],tName,vars[n]);
+    }
+    if(form[n]~"%f"){
+       tvar=sprintf("Float_t %s_%s;",tName,vars[n]);
+       variable=sprintf("%-40s%s%-2d = %sTable->SetVarAddress(\"%s\",&%s_%s);",tvar,"void *a",n,tName,vars[n],tName,vars[n]);
+    }
+    if(form[n]~"%s"){
+       tvar=sprintf("Char_t  %s_%s[200];",tName,vars[n]);
+       variable=sprintf("%-40s%s%-2d = %sTable->SetVarAddress(\"%s\",%s_%s);",tvar,"void *a",n,tName,vars[n],tName,vars[n]);
+    }
+    print variable;
+  }
+
+}' $fulltable >> $header
+
+echo >> $header
+##echo >> $header
+#
+##### Now copy all the rows from the original table with // at the beginning
+##### They'll be ignored in the header, but parsed the TExpTable when it reads the table.
+#
+##echo "//Now follow the rows from the original table - $fulltable:" >> $header
+##echo  >> $header
+##gawk '{
+##    printf"//%s\n",$0;
+##}' $fulltable >> $header
+##echo >> $header
+##echo >> $header 
+echo "#endif" >> $header
+
+# And print some primitive suggestion on how to use it.
+
+echo
+echo "Defined variables in header file: $header"
+echo
+echo "You need to include this in your analysis code"
+echo "Something like this"
+echo
+echo //----------------------------------- myanalysis.C -----------------------------------------
+echo "#include \"$header\""
+echo "..."
+echo "..." 
+echo "..."
+echo "class TExpTable *expTable;"
+echo "..." 
+echo "..."
+echo "char **filelist[]={\"clas_47848.A00.root\",\"clas_47849.A02.root\",.....,NULL};"
+echo "..."
+echo "myanalysis(){"
+echo "  char *file;"
+echo "  int fcounter=0,run;"
+echo "  expTable = new TExpTable(\"dat/allruns.dat\",RunTableVariables); //create a table object"
+echo "  ..." 
+echo "  ..."
+echo "  while((file=filelist[fcounter++])!=NULL){                      //loop over all files"
+echo "    sscanf(strchr(file,'_')+1,\"%d\",&run);                        //get run number from filename"
+echo "    expTable->GetAllForValue(run,\"Run\");                         //update all variables for this run"
+echo ""      
+echo "    if(*RT_Radiat==AMO) myAmoFileRoutine();                       //do something based on a RT variable"
+echo "  }"
+echo "}"
+
+  
+#exit

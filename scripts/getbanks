@@ -1,0 +1,18 @@
+#!/bin/sh
+# A shell script to generate a list of banks from a bos of DST file
+
+if [ $# -lt 1 ]; then
+    echo
+    echo "Description: A utility to generate a list of bank name strings"
+    echo
+    echo "Usage: getbanks [-Nnevents] bankfile"
+    echo
+    echo "Some examples:"
+    echo
+    echo "getbanks myfile.bos"
+    echo "getbanks -N1000 myfile.bos"
+    echo "getbanks myfile.root"
+    exit
+fi
+#exit
+bankdump $@ | grep Group | gawk '{array[$2]=1}END{printf"char *mybanks[]={";for(x in array){printf "\"%-4s\",",x};printf"\"null\"};\n"}'
