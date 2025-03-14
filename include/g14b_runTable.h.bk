@@ -1,0 +1,56 @@
+#ifndef __g14b_allruns_h__
+#define __g14b_allruns_h__
+
+#include "TExpTable.h"
+
+
+// This header was created from the table dat/g14b_allruns.dat on Fri Mar  7 17:23:14 EST 2014 by running the command:
+// ../rootbeer2.2/scripts/table2vars dat/g14b_allruns.dat
+
+// To use it, simple include the header
+// A globally available ExpTable class - g14b_allrunsTable is created
+// together with global variables relating to each column (g14b_allruns_var) - defined below
+//
+// Calling the member function GetAllForValue(int value, char *variable1, char *variable2=NULL)
+// searches for a row in the table and updates all the global variables to values in that row
+// Usually it would be a Run number or a run range
+// Eg. g14b_allrunsTable->GetAllForValue(53772,"Run"); would find the row where Run=53772
+// and update all the variables to the values from that row.
+// Eg. g14b_allrunsTable->GetAllForValue(53772,"RunMin","RunMax"); would find the row where RunMin <= 53772 <= RunMax
+// and update all the variables to the values from that row.
+
+// Create a TExpTable with this file as the actual data table
+//Char_t my_g14bRunTableName[255];
+//sprintf(my_g14bRunTableName,"%s/dat/g14b_allruns.dat",getenv("ROOTBEER"));
+//TExpTable *g14b_runTable = new TExpTable(my_g14bRunTableName,"g14b_runTable");
+TExpTable *g14b_runTable = new TExpTable("/home/clasg14/rootbeer2.1/dat/g14b_allruns.dat","g14b_runTable");
+//home/clasg14/rootbeer2.1
+// Define variables for all the columns in the run table and set their addresses in g14b_allrunsTable 
+
+// An obscure way to define and set global table and variables that works in both
+// interpreted and compiled mode - void *vg14b is a dummy
+
+void *vg14b;
+Int_t   g14b_Run;               vg14c = g14b_runTable->SetVarAddress("Run",&g14b_Run);
+Int_t   g14b_Nfiles;            vg14b = g14b_runTable->SetVarAddress("Nfiles",&g14b_Nfiles);
+Int_t   g14b_Nevents;           vg14b = g14b_runTable->SetVarAddress("Nevents",&g14b_Nevents);
+Char_t  g14b_Period[200];       vg14b = g14b_runTable->SetVarAddress("Period",g14b_Period);
+Char_t  g14b_Tstart[200];       vg14b = g14b_runTable->SetVarAddress("Tstart",g14b_Tstart);
+Float_t g14b_Ebeam;             vg14b = g14b_runTable->SetVarAddress("Ebeam",&g14b_Ebeam);   //in MeV
+Float_t g14b_Itorus;            vg14b = g14b_runTable->SetVarAddress("Itorus",&g14b_Itorus); //Amps
+Float_t g14b_Tlive;             vg14b = g14b_runTable->SetVarAddress("Tlive",&g14b_Tlive);
+Float_t g14b_Pbeam;             vg14b = g14b_runTable->SetVarAddress("Pbeam",&g14b_Pbeam);  //in %
+Float_t g14b_WienPhi;           vg14b = g14b_runTable->SetVarAddress("WienPhi",&g14b_WienPhi);
+Float_t g14b_WienH;             vg14b = g14b_runTable->SetVarAddress("WienH",&g14b_WienH);
+Int_t   g14b_HWP;               vg14b = g14b_runTable->SetVarAddress("HWP",&g14b_HWP); //half-wave plate at run begin
+Float_t g14b_CohEdge;           vg14b = g14b_runTable->SetVarAddress("CohEdge",&g14b_CohEdge);
+// g14b_CohEdge=fitted value at run begin
+Int_t   g14b_CohPlane;          vg14b = g14b_runTable->SetVarAddress("CohPlane",&g14b_CohPlane);
+// g14b_CohPlane=0 for PARA, =1 for PERP,  (=3 for 2 peaks: one PARA, the other PERP - for testruns only)
+Int_t   g14b_Radiator;          vg14b = g14b_runTable->SetVarAddress("Radiator",&g14b_Radiator);
+// g14b_Radiator=0 for amorph.radiator 5*10^-4 (circ.beam),  =1 for graphite amorph.rad., =2 for 30um diamond
+Float_t g14b_Hpol;             vg14b = g14b_runTable->SetVarAddress("Hpol",&g14b_Hpol);  //in %
+Float_t g14b_Dpol;             vg14b = g14b_runTable->SetVarAddress("Dpol",&g14b_Dpol);  //in %
+Char_t  g14b_Comment[200];     vg14b = g14b_runTable->SetVarAddress("Comment",g14b_Comment);
+
+#endif
